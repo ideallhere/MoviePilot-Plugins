@@ -34,7 +34,7 @@ class IYUUAutoSeed(_PluginBase):
     # 插件图标
     plugin_icon = "IYUU.png"
     # 插件版本
-    plugin_version = "2.15"
+    plugin_version = "2.18"
     # 插件作者
     plugin_author = "jxxghp,CKun"
     # 作者主页
@@ -88,6 +88,8 @@ class IYUUAutoSeed(_PluginBase):
     _success_caches = []
     # 辅种缓存，出错的种子不再重复辅种，且无法清除。种子被删除404等情况
     _permanent_error_caches = []
+    # 辅种缓存最大保存条数，避免长期运行时配置缓存无限增长
+    _seed_cache_max_items = 10000
     # 辅种计数
     total = 0
     realtotal = 0
@@ -97,6 +99,9 @@ class IYUUAutoSeed(_PluginBase):
     cached = 0
 
     def init_plugin(self, config: dict = None):
+        self._error_caches = []
+        self._success_caches = []
+        self._permanent_error_caches = []
 
         # 读取配置
         if config:
@@ -115,12 +120,18 @@ class IYUUAutoSeed(_PluginBase):
             self._categoryafterseed = config.get("categoryafterseed")
             self._auto_category = config.get("auto_category")
             self._auto_start = config.get("auto_start")
+            self._reuse_save_path = config.get("reuse_save_path", True)
             self._addhosttotag = config.get("addhosttotag")
             self._size = float(config.get("size")) if config.get("size") else 0
             self._clearcache = config.get("clearcache")
-            self._permanent_error_caches = [] if self._clearcache else config.get("permanent_error_caches") or []
-            self._error_caches = [] if self._clearcache else config.get("error_caches") or []
-            self._success_caches = [] if self._clearcache else config.get("success_caches") or []
+            self._permanent_error_caches = (
+                [] if self._clearcache else list(config.get("permanent_error_caches") or [])
+            )
+            self._error_caches = [] if self._clearcache else list(config.get("error_caches") or [])
+            self._success_caches = [] if self._clearcache else list(config.get("success_caches") or [])
+            self.__trim_seed_cache(self._permanent_error_caches)
+            self.__trim_seed_cache(self._error_caches)
+            self.__trim_seed_cache(self._success_caches)
 
             # 过滤掉已删除的站点
             all_sites = [site.id for site in SiteOper().list_order_by_pri()] + [site.get("id") for site in
@@ -130,6 +141,8 @@ class IYUUAutoSeed(_PluginBase):
 
         # 停止现有任务
         self.stop_service()
+        # 重新初始化运行期校验队列，避免类级字典跨插件重载残留。
+        self._recheck_torrents = {}
 
         # 启动定时任务 & 立即运行一次
         if self.get_state() or self._onlyonce:
@@ -582,6 +595,22 @@ class IYUUAutoSeed(_PluginBase):
                                         }
                                     }
                                 ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'reuse_save_path',
+                                            'label': '沿用原种路径(仅QB有效)',
+                                        }
+                                    }
+                                ]
                             }
                         ]
                     },
@@ -640,6 +669,7 @@ class IYUUAutoSeed(_PluginBase):
             "addhosttotag": False,
             "auto_category": False,
             "auto_start": False,
+            "reuse_save_path": True,
             "cron": "",
             "token": "",
             "downloaders": [],
@@ -674,11 +704,38 @@ class IYUUAutoSeed(_PluginBase):
             "addhosttotag": self._addhosttotag,
             "auto_category": self._auto_category,
             "auto_start": self._auto_start,
+            "reuse_save_path": self._reuse_save_path,
             "size": self._size,
             "success_caches": self._success_caches,
             "error_caches": self._error_caches,
             "permanent_error_caches": self._permanent_error_caches
         })
+
+    def __trim_seed_cache(self, cache: list):
+        """
+        去重并限制辅种缓存大小，避免长期任务把配置缓存无限撑大。
+        """
+        if not cache:
+            return
+        unique_cache = []
+        seen = set()
+        for item in reversed(cache):
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            unique_cache.append(item)
+        unique_cache.reverse()
+        cache[:] = unique_cache[-self._seed_cache_max_items:]
+
+    def __append_seed_cache(self, cache: list, value: str):
+        """
+        写入辅种缓存并保持上限，重复值只保留一份。
+        """
+        if not value:
+            return
+        if value not in cache:
+            cache.append(value)
+        self.__trim_seed_cache(cache)
 
     def auto_seed(self):
         """
@@ -984,12 +1041,17 @@ class IYUUAutoSeed(_PluginBase):
 
             torrent_tags.append(tag)
 
+            # 沿用原种保存路径：强制关闭 qB 自动种子管理(ATM)。
+            # 开启自动分类管理时 ATM 会覆盖 save_path，辅种落到分类目录而非原种路径，
+            # 原种文件不复用即表现为“文件丢失”。
+            force_reuse = bool(self._reuse_save_path)
             state = service.instance.add_torrent(content=content,
                                                  download_dir=save_path,
                                                  is_paused=True,
                                                  tag=torrent_tags,
-                                                 category=save_category,
-                                                 is_skip_checking=self._skipverify)
+                                                 category=None if force_reuse else save_category,
+                                                 is_skip_checking=self._skipverify,
+                                                 ignore_category_check=not force_reuse)
             if not state:
                 return None
             else:
@@ -998,6 +1060,11 @@ class IYUUAutoSeed(_PluginBase):
                 if not torrent_hash:
                     logger.error(f"{service.name} 下载任务添加成功，但获取任务信息失败！")
                     return None
+                # 强制复用路径时分类未在添加时下发(ATM已关闭)，此处补设；
+                # ATM 关闭下修改分类不会触发文件移动，save_path 保持不变
+                if force_reuse and save_category:
+                    service.instance.set_torrent_category(hash_string=torrent_hash,
+                                                          category=save_category)
             return torrent_hash
         elif service.type == "transmission":
             # 添加任务
@@ -1036,7 +1103,7 @@ class IYUUAutoSeed(_PluginBase):
         site_url, download_page = self.iyuu_helper.get_torrent_url(seed.get("sid"))
         if not site_url or not download_page:
             # 加入缓存
-            self._error_caches.append(seed.get("info_hash"))
+            self.__append_seed_cache(self._error_caches, seed.get("info_hash"))
             self.fail += 1
             self.cached += 1
             return False
@@ -1071,7 +1138,7 @@ class IYUUAutoSeed(_PluginBase):
                                               base_url=download_page)
         if not torrent_url:
             # 加入失败缓存
-            self._error_caches.append(seed.get("info_hash"))
+            self.__append_seed_cache(self._error_caches, seed.get("info_hash"))
             self.fail += 1
             self.cached += 1
             return False
@@ -1092,10 +1159,10 @@ class IYUUAutoSeed(_PluginBase):
             self.fail += 1
             # 加入失败缓存
             if error_msg and ('无法打开链接' in error_msg or '触发站点流控' in error_msg):
-                self._error_caches.append(seed.get("info_hash"))
+                self.__append_seed_cache(self._error_caches, seed.get("info_hash"))
             else:
                 # 种子不存在的情况
-                self._permanent_error_caches.append(seed.get("info_hash"))
+                self.__append_seed_cache(self._permanent_error_caches, seed.get("info_hash"))
             logger.error(f"下载种子文件失败：{torrent_url}")
             return False
         # 添加下载，辅种任务默认暂停
@@ -1109,7 +1176,7 @@ class IYUUAutoSeed(_PluginBase):
             # 下载失败
             self.fail += 1
             # 加入失败缓存
-            self._error_caches.append(seed.get("info_hash"))
+            self.__append_seed_cache(self._error_caches, seed.get("info_hash"))
             return False
         else:
             self.success += 1
@@ -1130,7 +1197,7 @@ class IYUUAutoSeed(_PluginBase):
             # 下载成功
             logger.info(f"成功添加辅种下载，站点：{site_info.get('name')}，种子链接：{torrent_url}")
             # 成功也加入缓存，有一些改了路径校验不通过的，手动删除后，下一次又会辅上
-            self._success_caches.append(seed.get("info_hash"))
+            self.__append_seed_cache(self._success_caches, seed.get("info_hash"))
             return True
 
     def __add_recheck_torrents(self, service: ServiceInfo, download_id: str):

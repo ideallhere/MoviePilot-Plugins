@@ -13,6 +13,7 @@ from typing import Any, List, Dict, Tuple, Optional
 from app.log import logger
 from app.schemas import NotificationType
 from app.utils.http import RequestUtils
+from app.helper.browser import PlaywrightHelper
 
 
 class InvitesSignin(_PluginBase):
@@ -23,7 +24,7 @@ class InvitesSignin(_PluginBase):
     # 插件图标
     plugin_icon = "invites.png"
     # 插件版本
-    plugin_version = "2.0.2"
+    plugin_version = "2.0.4"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -42,8 +43,9 @@ class InvitesSignin(_PluginBase):
     _cookie = None
     _onlyonce = False
     _notify = False
-    # 代理相关
+    # 代理 / 浏览器仿真
     _use_proxy = True  # 是否使用代理，默认启用
+    _use_browser_emulation = False  # 是否启用浏览器仿真（绕过CF防护）
     _history_days = None
     _username = None
     _user_password = None
@@ -54,6 +56,8 @@ class InvitesSignin(_PluginBase):
 
     # 定时器
     _scheduler: Optional[BackgroundScheduler] = None
+    # 浏览器仿真实例缓存
+    _playwright: Optional[PlaywrightHelper] = None
 
     def init_plugin(self, config: dict = None):
         # 停止现有任务
@@ -66,11 +70,19 @@ class InvitesSignin(_PluginBase):
             self._notify = config.get("notify")
             self._onlyonce = config.get("onlyonce")
             self._use_proxy = config.get("use_proxy", True)
+            self._use_browser_emulation = config.get("use_browser_emulation", False)
             self._history_days = int(config.get("history_days") or 30)
             self._username = config.get("username")
             self._user_password = config.get("user_password")
             self._retry_count = int(config.get("retry_count") or 2)
             self._retry_interval = int(config.get("retry_interval") or 5)
+
+        if self._use_browser_emulation:
+            if not self._playwright:
+                self._playwright = PlaywrightHelper()
+        else:
+            self._playwright = None
+
         if self._onlyonce:
             # 定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -87,6 +99,7 @@ class InvitesSignin(_PluginBase):
                 "cookie": self._cookie,
                 "notify": self._notify,
                 "use_proxy": self._use_proxy,
+                "use_browser_emulation": self._use_browser_emulation,
                 "history_days": self._history_days,
                 "username": self._username,
                 "user_password": self._user_password,
@@ -98,6 +111,32 @@ class InvitesSignin(_PluginBase):
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+    def _get_page_source(self, url: str, cookies=None) -> Optional[str]:
+        """
+        获取页面HTML源码。
+        若启用浏览器仿真，调用PlaywrightHelper（内部按 settings.BROWSER_EMULATION 使用
+        playwright 或 flaresolverr 引擎）；否则走普通HTTP请求。
+        """
+        proxies = self.__get_proxies()
+        proxy_server = settings.PROXY_SERVER if self._use_proxy else None
+
+        if self._use_browser_emulation:
+            logger.info(f"[浏览器仿真] 使用 {settings.BROWSER_EMULATION} 引擎请求: {url}")
+            if not self._playwright:
+                self._playwright = PlaywrightHelper()
+            return self._playwright.get_page_source(
+                url=url,
+                cookies=cookies,
+                proxies=proxy_server,
+                timeout=60
+            )
+
+        res = RequestUtils(cookies=cookies, proxies=proxies).get_res(url=url)
+        if res and res.status_code == 200:
+            return res.text
+        logger.error(f"普通请求失败: {url}, 状态码: {res.status_code if res else '无响应'}")
+        return None
 
     def __get_proxies(self):
         """
@@ -313,6 +352,7 @@ class InvitesSignin(_PluginBase):
                     "cookie": self._cookie,
                     "notify": self._notify,
                     "use_proxy": self._use_proxy,
+                    "use_browser_emulation": self._use_browser_emulation,
                     "history_days": self._history_days,
                     "username": self._username,
                     "user_password": self._user_password,
@@ -327,7 +367,7 @@ class InvitesSignin(_PluginBase):
 
     def __signin(self):
         """药丸签到"""
-        # 1. 检查今日是否已签到
+        # 1. 本地历史只作为提示，最终以站点实时状态为准，避免旧版本误记成功后跳过真实签到
         try:
             history = self.get_data('history') or []
             if history:
@@ -339,8 +379,7 @@ class InvitesSignin(_PluginBase):
                     # 获取今日日期字符串 YYYY-MM-DD
                     today_str = datetime.now().strftime('%Y-%m-%d')
                     if last_date.startswith(today_str):
-                        logger.info(f"今日已签到 ({last_date})，跳过本次任务")
-                        return
+                        logger.info(f"本地已有今日签到记录 ({last_date})，继续校验站点实时签到状态")
         except Exception as e:
             logger.warning(f"检查签到历史失败: {e}")
 
@@ -411,14 +450,14 @@ class InvitesSignin(_PluginBase):
             proxies = self.__get_proxies()
             
             # 4. 使用新cookie获取csrfToken和userId
-            res = RequestUtils(cookies=new_cookie, proxies=proxies).get_res(url="https://invites.fun")
-            if not res or res.status_code != 200:
+            page_html = self._get_page_source("https://invites.fun", cookies=new_cookie)
+            if not page_html:
                 logger.error("请求药丸错误")
                 return False
 
             # 获取csrfToken
             pattern = r'"csrfToken":"(.*?)"'
-            csrfToken = re.findall(pattern, res.text)
+            csrfToken = re.findall(pattern, page_html)
             if not csrfToken:
                 logger.error("请求csrfToken失败")
                 return False
@@ -428,7 +467,7 @@ class InvitesSignin(_PluginBase):
 
             # 获取userid
             pattern = r'"userId":(\d+)'
-            match = re.search(pattern, res.text)
+            match = re.search(pattern, page_html)
 
             if match:
                 userId = match.group(1)
@@ -484,31 +523,160 @@ class InvitesSignin(_PluginBase):
             logger.error(f"登录签到过程中发生异常: {e}")
             return False
 
+    def __build_api_headers(self, csrf_token: str, referer: str = "https://invites.fun/") -> dict:
+        """
+        构建药丸 API 请求头，贴近前端真实签到请求。
+        """
+        return {
+            'accept': '*/*',
+            'accept-language': 'zh-CN,zh-Hans;q=0.9',
+            'origin': 'https://invites.fun',
+            'referer': referer,
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'x-csrf-token': csrf_token,
+            'user-agent': self._user_agent
+        }
+
+    @staticmethod
+    def __extract_checkin_state(payload: dict) -> dict:
+        """
+        从药丸 JSON:API 用户响应中提取签到状态字段。
+        """
+        if not isinstance(payload, dict):
+            return {}
+
+        data = payload.get('data')
+        if not isinstance(data, dict):
+            return {}
+
+        attrs = data.get('attributes')
+        if not isinstance(attrs, dict):
+            return {}
+
+        return {
+            "user_id": str(data.get('id') or ""),
+            "canCheckin": attrs.get('canCheckin'),
+            "lastCheckinTime": attrs.get('lastCheckinTime') or "",
+            "totalContinuousCheckIn": attrs.get('totalContinuousCheckIn'),
+            "money": attrs.get('money')
+        }
+
+    def __fetch_checkin_state(self, user_id: str, cookies: dict, csrf_token: str) -> dict:
+        """
+        查询用户当前签到状态，用于签到前判断和签到后复核。
+        """
+        try:
+            response = RequestUtils(
+                cookies=cookies,
+                headers=self.__build_api_headers(csrf_token),
+                proxies=self.__get_proxies()
+            ).get_res(url=f'https://invites.fun/api/users/{user_id}')
+            if response is None:
+                logger.error("查询药丸签到状态失败：无响应")
+                return {}
+            if response.status_code != 200:
+                logger.error(f"查询药丸签到状态失败，状态码: {response.status_code}")
+                return {}
+            return self.__extract_checkin_state(response.json())
+        except Exception as e:
+            logger.error(f"查询药丸签到状态异常: {e}")
+            return {}
+
+    @staticmethod
+    def __is_today_checkin(state: dict) -> bool:
+        """
+        判断签到状态是否已经落到当天。
+        """
+        last_checkin_time = str((state or {}).get("lastCheckinTime") or "")
+        return bool(last_checkin_time and last_checkin_time.startswith(datetime.now().strftime('%Y-%m-%d')))
+
+    @staticmethod
+    def __get_response_error_message(response) -> str:
+        """
+        从药丸接口错误响应中提取可读提示。
+        """
+        if response is None:
+            return "无响应"
+
+        try:
+            payload = response.json()
+            errors = payload.get("errors") if isinstance(payload, dict) else None
+            if errors:
+                messages = []
+                for error in errors:
+                    if not isinstance(error, dict):
+                        continue
+                    message = error.get("detail") or error.get("title") or error.get("code")
+                    if message:
+                        messages.append(str(message))
+                if messages:
+                    return "；".join(messages)
+        except Exception:
+            pass
+
+        text = getattr(response, "text", "") or ""
+        return text[:200] if text else f"HTTP {response.status_code}"
+
+    def __save_checkin_history(self, state: dict):
+        """
+        保存签到历史，并按配置保留最近记录。
+        """
+        checkin_time = str((state or {}).get("lastCheckinTime") or "") or datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        total_continuous_checkin = (state or {}).get("totalContinuousCheckIn")
+        money = (state or {}).get("money")
+
+        history = self.get_data('history') or []
+        checkin_day = checkin_time[:10]
+        if checkin_day:
+            history = [record for record in history if not str(record.get("date", "")).startswith(checkin_day)]
+
+        history.append({
+            "date": checkin_time,
+            "totalContinuousCheckIn": total_continuous_checkin,
+            "money": money
+        })
+
+        retain_seconds = int(self._history_days or 30) * 24 * 60 * 60
+        expired_timestamp = time.time() - retain_seconds
+        cleaned_history = []
+        for record in history:
+            try:
+                if datetime.strptime(record["date"], '%Y-%m-%d %H:%M:%S').timestamp() >= expired_timestamp:
+                    cleaned_history.append(record)
+            except Exception:
+                logger.debug(f"忽略格式异常的签到历史记录: {record}")
+
+        self.save_data(key="history", value=cleaned_history)
+
+    def __notify_checkin_success(self, state: dict, already_signed: bool = False):
+        """
+        发送签到成功或今日已签到通知。
+        """
+        if not self._notify:
+            return
+
+        status_text = "✅今日已签到" if already_signed else "✅已签到"
+        money = (state or {}).get("money")
+        total_continuous_checkin = (state or {}).get("totalContinuousCheckIn")
+        self.post_message(
+            mtype=NotificationType.SiteMessage,
+            title="【💊药丸签到】任务完成",
+            text="━━━━━━━━━━━━━━\n"
+                 f"✨ 状态：{status_text}\n"
+                 "━━━━━━━━━━━━━━\n"
+                 "📊 数据统计\n"
+                 f"💊 剩余药丸：{money}\n"
+                 f"📆 累计签到：{total_continuous_checkin}天\n"
+                 "━━━━━━━━━━━━━━\n"
+                 f"🕐 签到时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     def __perform_checkin(self, user_id: str, cookie_str: str, csrf_token: str) -> bool:
         """执行实际的签到操作"""
         try:
             # 构建签到请求的headers
-            headers = {
-                'accept': '*/*',
-                'content-type': 'application/json; charset=UTF-8',
-                'origin': 'https://invites.fun',
-                'referer': 'https://invites.fun/',
-                'x-csrf-token': csrf_token,
-                'x-http-method-override': 'PATCH',
-                'user-agent': self._user_agent
-            }
-            
-            # 构建签到请求的JSON数据
-            json_data = {
-                'data': {
-                    'type': 'users',
-                    'attributes': {
-                        'canCheckin': False,
-                        'totalContinuousCheckIn': 2, #连续签到天数
-                    },
-                    'id': str(user_id),
-                },
-            }
+            headers = self.__build_api_headers(csrf_token)
             
             # 构建cookies - 使用安全的解析方法
             cookies = self.__parse_cookie_string(cookie_str)
@@ -520,58 +688,49 @@ class InvitesSignin(_PluginBase):
             
             # 获取代理
             proxies = self.__get_proxies()
+
+            # 先查询站点实时状态，避免本地历史或旧接口响应造成误判
+            before_state = self.__fetch_checkin_state(user_id, cookies, csrf_token)
+            if before_state and before_state.get("canCheckin") is False and self.__is_today_checkin(before_state):
+                logger.info("药丸今日已签到，跳过重复签到")
+                self.__save_checkin_history(before_state)
+                self.__notify_checkin_success(before_state, already_signed=True)
+                return True
             
             # 执行签到请求
-            checkin_url = f'https://invites.fun/api/users/{user_id}'
+            checkin_url = 'https://invites.fun/api/checkin'
             response = RequestUtils(cookies=cookies, headers=headers, proxies=proxies).post_res(
-                checkin_url, 
-                json=json_data
+                checkin_url
             )
             
-            if not response or response.status_code != 200:
-                logger.error(f"签到请求失败，状态码: {response.status_code if response else 'None'}")
+            if response is None:
+                logger.error("签到请求失败：无响应")
+                return False
+            if response.status_code != 200:
+                error_message = self.__get_response_error_message(response)
+                logger.error(f"签到请求失败，状态码: {response.status_code}，原因: {error_message}")
+                after_state = self.__fetch_checkin_state(user_id, cookies, csrf_token)
+                if after_state and after_state.get("canCheckin") is False and self.__is_today_checkin(after_state):
+                    logger.info("药丸站点状态显示今日已签到")
+                    self.__save_checkin_history(after_state)
+                    self.__notify_checkin_success(after_state, already_signed=True)
+                    return True
                 return False
             
             # 解析签到响应
             try:
                 checkin_data = response.json()
-                
-                # 提取关键信息
-                total_continuous_checkin = checkin_data['data']['attributes']['totalContinuousCheckIn']
-                money = checkin_data['data']['attributes']['money']
-                
+                checkin_state = self.__extract_checkin_state(checkin_data)
+                if not checkin_state:
+                    logger.error("签到响应缺少用户状态数据")
+                    return False
+                if checkin_state.get("canCheckin") is not False or not self.__is_today_checkin(checkin_state):
+                    logger.error(f"签到响应未确认今日已签到: {checkin_state}")
+                    return False
+
                 logger.info("药丸签到成功")
-                
-                # 发送通知
-                if self._notify:
-                    self.post_message(
-                        mtype=NotificationType.SiteMessage,
-                        title="【💊药丸签到】任务完成",
-                        text="━━━━━━━━━━━━━━\n"
-                             "✨ 状态：✅已签到\n"
-                             "━━━━━━━━━━━━━━\n"
-                             "📊 数据统计\n"
-                             f"💊 剩余药丸：{money}\n"
-                             f"📆 累计签到：{total_continuous_checkin}天\n"
-                             "━━━━━━━━━━━━━━\n"
-                             f"🕐 签到时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                # 保存签到历史
-                history = self.get_data('history') or []
-                history.append({
-                    "date": datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
-                    "totalContinuousCheckIn": total_continuous_checkin,
-                    "money": money
-                })
-                
-                # 清理超过保留天数的历史记录
-                thirty_days_ago = time.time() - int(self._history_days) * 24 * 60 * 60
-                history = [record for record in history if
-                           datetime.strptime(record["date"], '%Y-%m-%d %H:%M:%S').timestamp() >= thirty_days_ago]
-                
-                # 保存签到历史
-                self.save_data(key="history", value=history)
-                
+                self.__notify_checkin_success(checkin_state)
+                self.__save_checkin_history(checkin_state)
                 return True
                 
             except Exception as e:
@@ -640,6 +799,9 @@ class InvitesSignin(_PluginBase):
                                     {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'use_proxy', 'label': '使用代理', 'color': 'warning'}}]},
                                     {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'notify', 'label': '开启通知', 'color': 'info'}}]},
                                     {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'onlyonce', 'label': '立即运行一次', 'color': 'success'}}]},
+                                ]},
+                                {'component': 'VRow', 'content': [
+                                    {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'use_browser_emulation', 'label': '启用浏览器仿真', 'color': '#009688'}}]},
                                 ]},
                             ]}
                         ]
@@ -781,7 +943,18 @@ class InvitesSignin(_PluginBase):
                                                     {'component': 'VIcon', 'props': {'color': 'success', 'class': 'mt-1 mr-2'}, 'text': 'mdi-check-circle'},
                                                     {'component': 'div', 'props': {'class': 'text-subtitle-1 font-weight-regular mb-1', 'style': 'color: #444;'}, 'text': '功能特点'}
                                                 ]},
-                                                {'component': 'div', 'props': {'class': 'text-body-2 ml-8'}, 'text': '优先使用填写Cookie进行签到，自动刷新session，如果Cookie签到失败或未设置则尝试进行登陆签到，支持签到历史记录查看。'}
+                                                 {'component': 'div', 'props': {'class': 'text-body-2 ml-8'}, 'text': '优先使用填写Cookie进行签到，自动刷新session，如果Cookie签到失败或未设置则尝试进行登陆签到，支持签到历史记录查看。'}
+                                             ]
+                                         },
+                                         {
+                                             'component': 'VListItem',
+                                             'props': {'lines': 'two'},
+                                             'content': [
+                                                 {'component': 'div', 'props': {'class': 'd-flex align-items-start'}, 'content': [
+                                                     {'component': 'VIcon', 'props': {'color': '#009688', 'class': 'mt-1 mr-2'}, 'text': 'mdi-robot'},
+                                                     {'component': 'div', 'props': {'class': 'text-subtitle-1 font-weight-regular mb-1', 'style': 'color: #444;'}, 'text': '浏览器仿真说明'}
+                                                 ]},
+                                                 {'component': 'div', 'props': {'class': 'text-body-2 ml-8'}, 'text': '开启后将使用系统配置的 Playwright 或 FlareSolverr 引擎获取页面，可绕过 Cloudflare 防护。引擎须在 MoviePilot 系统设置中提前配置。'}
                                             ]
                                         }
                                     ]
@@ -796,6 +969,7 @@ class InvitesSignin(_PluginBase):
             "onlyonce": False,
             "notify": False,
             "use_proxy": True,
+            "use_browser_emulation": False,
             "cookie": "",
             "history_days": 30,
             "cron": "0 9 * * *",

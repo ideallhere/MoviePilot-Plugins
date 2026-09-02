@@ -1,3 +1,4 @@
+import json
 from typing import List, Tuple, Dict, Any
 
 import datetime
@@ -23,7 +24,7 @@ class RemoteIdentifiers(_PluginBase):
     # 插件图标
     plugin_icon = "words.png"
     # 插件版本
-    plugin_version = "2.3"
+    plugin_version = "2.4.1"
     # 插件作者
     plugin_author = "honue"
     # 作者主页
@@ -74,25 +75,17 @@ class RemoteIdentifiers(_PluginBase):
     def get_file_content(self, file_urls: list) -> List[str]:
         ret: List[str] = ['#========以下识别词由 RemoteIdentifiers 插件添加========#']
         for file_url in file_urls:
-            # https://movie-pilot.org/etherpad/p/MoviePilot_TV_Words
-            if file_url.count("etherpad") != 0 and file_url.count("export") == 0:
-                real_url = file_url + "/export/txt"
+            file_url = file_url.strip()
+            if not file_url:
+                continue
+            if file_url.lower().endswith(".json"):
+                mapping = self.__get_remote_mapping(file_url=file_url)
+                for words_name, words_url in mapping.items():
+                    identifiers = self.__get_remote_identifiers(words_url=words_url, words_name=words_name)
+                    ret += identifiers
             else:
-                real_url = file_url
-            response = RequestUtils(proxies=settings.PROXY,
-                                    headers=settings.GITHUB_HEADERS if real_url.count("github") else None,
-                                    timeout=15).get_res(real_url)
-            if not response:
-                raise Exception(f"文件 {real_url} 下载失败！")
-            elif response.status_code != 200:
-                raise Exception(f"下载文件 {real_url} 失败：{response.status_code} - {response.reason}")
-            text = response.content.decode('utf-8')
-            if text.find("doctype html") > 0:
-                raise Exception(f"下载文件 {real_url} 失败：{response.status_code} - {response.reason}")
-            if "try again later" in text:
-                raise Exception(f"下载文件 {real_url} 失败：{text}")
-            identifiers: List[str] = text.split('\n')
-            ret += identifiers
+                identifiers = self.__get_remote_identifiers(words_url=file_url)
+                ret += identifiers
         # flitter 过滤空行
         if self._flitter:
             filtered_ret = []
@@ -102,6 +95,56 @@ class RemoteIdentifiers(_PluginBase):
             ret = filtered_ret
         logger.info(f"获取到远端识别词{len(ret) - 1}条: {ret[1:]}")
         return ret
+
+    def __get_real_url(self, words_url: str) -> str:
+        # https://movie-pilot.org/etherpad/p/MoviePilot_TV_Words
+        if words_url.count("etherpad") != 0 and words_url.count("export") == 0:
+            return words_url + "/export/txt"
+        return words_url
+
+    def __get_response_text(self, url: str) -> str:
+        response = RequestUtils(
+            proxies=settings.PROXY,
+            headers=settings.GITHUB_HEADERS if url.count("github") else None,
+            timeout=15
+        ).get_res(url)
+        if not response:
+            raise Exception(f"文件 {url} 下载失败！")
+        if response.status_code != 200:
+            raise Exception(f"下载文件 {url} 失败：{response.status_code} - {response.reason}")
+        text = response.content.decode('utf-8')
+        if text.find("doctype html") > 0:
+            raise Exception(f"下载文件 {url} 失败：{response.status_code} - {response.reason}")
+        if "try again later" in text:
+            raise Exception(f"下载文件 {url} 失败：{text}")
+        return text
+
+    def __get_remote_identifiers(self, words_url: str, words_name: str = None) -> List[str]:
+        real_url = self.__get_real_url(words_url=words_url)
+        text = self.__get_response_text(url=real_url)
+        identifiers = text.split('\n')
+        if words_name:
+            logger.info(f"词表[{words_name}]获取成功，地址：{real_url}，识别词数量：{len(identifiers)}")
+        return identifiers
+
+    def __get_remote_mapping(self, file_url: str) -> Dict[str, str]:
+        real_url = self.__get_real_url(words_url=file_url)
+        text = self.__get_response_text(url=real_url)
+        try:
+            mapping = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise Exception(f"订阅文件 {real_url} 不是合法JSON：{str(e)}")
+        if not isinstance(mapping, dict):
+            raise Exception(f"订阅文件 {real_url} 格式错误：必须为对象，格式为 词表名 -> 词表地址")
+        normalized_mapping: Dict[str, str] = {}
+        for words_name, words_url in mapping.items():
+            if not isinstance(words_name, str):
+                raise Exception(f"订阅文件 {real_url} 格式错误：词表名必须是字符串")
+            if not isinstance(words_url, str) or not words_url.strip():
+                raise Exception(f"订阅文件 {real_url} 格式错误：词表[{words_name}]地址必须是非空字符串")
+            normalized_mapping[words_name] = words_url.strip()
+        logger.info(f"订阅文件[{real_url}]解析成功，共 {len(normalized_mapping)} 个词表")
+        return normalized_mapping
 
     def __task(self):
         words: List[str] = self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
@@ -229,8 +272,6 @@ class RemoteIdentifiers(_PluginBase):
                                             'type': 'success',
                                             'variant': 'tonal',
                                             'text': '可自己创建分享地址（支持Github及Etherpad），Github需要raw的源文件地址，文件格式与系统中配置格式一致即可。'
-                                                    '以下为官方托管的共享识别词，开放给大家共同维护，但由于经常有人捣乱，且体量越来越大影响运行效率，'
-                                                    '【建议仅供分享和参考】，不在插件中引用：https://movie-pilot.org/etherpad/p/MoviePilot_TV_Words、https://movie-pilot.org/etherpad/p/MoviePilot_Anime_Words'
                                         }
                                     }
                                 ]

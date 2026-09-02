@@ -26,11 +26,12 @@
     "name": "AI字幕自动生成(v2)",
     "description": "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。",
     "labels": "字幕",
-    "version": "2.5",
+    "version": "2.5.1",
     "icon": "autosubtitles.jpeg",
     "author": "TimoYoung",
     "level": 1,
     "v2": true,
+    "v3": false,
     "history": {
       "v1.0": "first stable version",
       "v1.1": "优化字幕翻译逻辑，优化日志输出",
@@ -39,7 +40,8 @@
       "v2.1": "支持清除历史记录",
       "v2.2": "fix",
       "v2.3": "支持独立的大模型调用配置",
-      "v2.5": "适配openai api v1"
+      "v2.5": "适配openai api v1",
+      "v2.5.1": "更新依赖"
     }
   },
   "CustomSites": {
@@ -113,11 +115,13 @@
     "name": "目录监控",
     "description": "监控目录文件发生变化时实时整理到媒体库。",
     "labels": "文件整理",
-    "version": "2.4",
+    "version": "2.5.1",
     "icon": "directory.png",
     "author": "jxxghp",
     "level": 1,
     "history": {
+      "v2.5.1": "过滤下载临时文件和不可整理文件，避免目录监控误触发整理",
+      "v2.5": "目录监控改用watchfiles，移除旧监控依赖",
       "v2.4": "修复目录监控不使用ChatGPT辅助识别问题",
       "v2.3": "特殊场景下补充转移成功历史记录",
       "v2.2": "更新目录设置说明",
@@ -139,11 +143,12 @@
     "name": "豆瓣榜单订阅",
     "description": "监控豆瓣热门榜单，自动添加订阅。",
     "labels": "订阅",
-    "version": "1.9.1",
+    "version": "1.10.0",
     "icon": "movie.jpg",
     "author": "jxxghp",
     "level": 2,
     "history": {
+      "v1.10.0": "支持切换使用豆瓣评分或TMDB评分筛选订阅",
       "v1.9.1": "优化媒体类型的判断处理",
       "v1.9": "增强API安全性",
       "v1.8": "订阅历史记录支持手动删除，需要主程序升级至v1.8.4+版本"
@@ -191,12 +196,13 @@
     "name": "自定义Hosts",
     "description": "修改系统hosts文件，加速网络访问。",
     "labels": "网络",
-    "version": "1.2",
+    "version": "1.2.1",
     "icon": "hosts.png",
     "author": "thsrite",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.2.1": "更新依赖",
       "v1.2": "支持写入注释",
       "v1.1": "关闭插件时自动恢复系统hosts"
     }
@@ -205,11 +211,12 @@
     "name": "播放限速",
     "description": "外网播放媒体库视频时，自动对下载器进行限速。",
     "labels": "网络",
-    "version": "1.3",
+    "version": "1.4",
     "icon": "Librespeed_A.png",
     "author": "Shurelol",
     "level": 1,
     "history": {
+      "v1.4": "兼容 Jellyfin 10.8-10.11 多版本会话结构，过滤停止后的残留会话并修复缺少比特率时不触发限速",
       "v1.3": "修复bug；增加预留带宽设置",
       "v1.2.1": "修复多下载器时限速比例计算错误问题",
       "v1.2": "增加不限速路径配置，以应对网盘直链播放的情况"
@@ -219,12 +226,13 @@
     "name": "Cloudflare IP优选",
     "description": "🌩 测试 Cloudflare CDN 延迟和速度，自动优选IP。",
     "labels": "网络,站点",
-    "version": "1.5",
+    "version": "1.5.1",
     "icon": "cloudflare.jpg",
     "author": "thsrite",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.5.1": "更新依赖",
       "v1.5": "适配CloudflareSpeedTest新版名称",
       "v1.4": "修复立即运行一次",
       "v1.3": "调整插件开启状态判断条件",
@@ -248,11 +256,12 @@
     "name": "媒体库服务器通知",
     "description": "发送Emby/Jellyfin/Plex服务器的播放、入库等通知消息。",
     "labels": "消息通知,媒体库",
-    "version": "1.3",
+    "version": "1.4",
     "icon": "mediaplay.png",
     "author": "jxxghp",
     "level": 1,
     "history": {
+      "v1.4": "兼容Jellyfin ItemAdded入库Webhook事件",
       "v1.3": "兼容处理Emby部分客户端暂停重复推送停止播放webhook的场景",
       "v1.2": "播放通知增加超链接跳转（需要v1.9.4+）"
     }
@@ -322,11 +331,13 @@
     "name": "IYUU自动辅种",
     "description": "基于IYUU官方Api实现自动辅种。",
     "labels": "做种,IYUU",
-    "version": "1.9.12",
+    "version": "1.9.14",
     "icon": "IYUU.png",
     "author": "jxxghp",
     "level": 2,
     "history": {
+      "v1.9.14": "修复由于站点哈希值过期导致辅种失败的问题，并优化代码逻辑",
+      "v1.9.13": "限制辅种缓存大小并重置运行期校验队列，避免长期运行缓存无限增长",
       "v1.9.12": "修复海豹不能辅种的问题",
       "v1.9.11": "修复馒头不能辅种的问题",
       "v1.9.10": "Revert 辅种结束后，一起开始所有辅种后暂停的种子（排除了出错的种子）",
@@ -352,11 +363,12 @@
     "name": "青蛙辅种助手",
     "description": "参考ReseedPuppy和IYUU辅种插件实现自动辅种，支持站点：青蛙、AGSVPT、麒麟、UBits、聆音、憨憨等。",
     "labels": "做种",
-    "version": "2.4",
+    "version": "2.4.1",
     "icon": "qingwa.png",
     "author": "233@qingwa",
     "level": 2,
     "history": {
+      "v2.4.1": "限制辅种缓存大小并重置运行期校验队列，避免长期运行缓存无限增长",
       "v2.4": "支持qbittorrent 5",
       "v2.2": "站点停用后会同步暂停对该站点的辅种",
       "v2.3": "站点辅种支持代理"
@@ -366,11 +378,13 @@
     "name": "整理VCB动漫压制组作品",
     "description": "一款辅助整理&提高识别VCB-Stuido动漫压制组作品的插件",
     "labels": "文件整理,识别",
-    "version": "1.8.2.1",
+    "version": "1.8.2.4",
     "icon": "vcbmonitor.png",
     "author": "pixel@qingwa",
     "level": 2,
     "history": {
+      "v1.8.2.4": "过滤下载临时文件和不可整理文件，避免目录监控误触发整理",
+      "v1.8.2.3": "目录监控改用watchfiles，移除旧监控依赖",
       "v1.8.2.1": "修复日志输出&同步目录监控插件功能",
       "v1.8.2": "提高识别率",
       "v1.8.1": "重构插件，测试版",
@@ -467,13 +481,14 @@
     "name": "药丸签到",
     "description": "药丸论坛签到。",
     "labels": "站点",
-    "version": "2.0.2",
+    "version": "2.0.4",
     "icon": "invites.png",
     "author": "thsrite",
     "level": 2,
-    "v2": true,
     "release": true,
     "history": {
+      "v2.0.4": "切换药丸真实签到接口并校验站点实时签到状态，修复失败误报成功问题",
+      "v2.0.3": "增加启用浏览器仿真功能发送请求",
       "v2.0.2": "增加签到检测机制防止重复签到，增强代码健壮性。",
       "v2.0.1": "尝试修复签到失败问题，新增使用代理、Cookie自动更新功能",
       "v2.0.0": "修复签到失败问题，新增账户登录签到功能、新增签到失败重试机制，美化界面UI",
@@ -568,6 +583,7 @@
     "v2": true
   },
   "EpisodeGroupMeta": {
+    "v3": false,
     "name": "TMDB剧集组刮削",
     "description": "从TMDB剧集组刮削季集的实际顺序。",
     "labels": "刮削",
@@ -619,6 +635,7 @@
     }
   },
   "DownloadSiteTag": {
+    "v3": false,
     "name": "下载任务分类与标签",
     "description": "自动给下载任务分类与打站点标签、剧集名称标签",
     "labels": "下载管理",
@@ -634,12 +651,14 @@
     "name": "清理硬链接",
     "description": "监控目录内文件被删除时，同步删除监控目录内所有和它硬链接的文件",
     "labels": "文件整理",
-    "version": "2.2",
+    "version": "2.3.1",
     "icon": "Ombi_A.png",
     "author": "DzAvril",
     "level": 1,
     "v2": true,
     "history": {
+      "v2.3.1": "优化下载临时文件过滤，避免清理硬链接处理未完成文件",
+      "v2.3": "目录监控改用watchfiles，移除旧监控依赖",
       "v2.2": "修复直接删除文件夹导致的插件崩溃的bug",
       "v2.1": "联动删除历史记录",
       "v2.0": "联动删除种子，需安装插件[下载器助手]并打开监听源文件事件",
@@ -653,12 +672,14 @@
     "name": "实时硬链接",
     "description": "监控目录文件变化，实时硬链接。",
     "labels": "文件整理",
-    "version": "1.6",
+    "version": "1.7.1",
     "icon": "Linkace_C.png",
     "author": "jxxghp",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.7.1": "过滤下载临时文件，避免实时硬链接处理未完成文件",
+      "v1.7": "目录监控改用watchfiles，移除旧监控依赖",
       "v1.6": "增强API安全性"
     }
   },
@@ -679,16 +700,19 @@
     "name": "共享识别词",
     "description": "从Github、Etherpad等远程文件中获取共享识别词并应用。",
     "labels": "识别",
-    "version": "2.3",
+    "version": "2.4.1",
     "icon": "words.png",
     "author": "honue",
     "level": 1,
     "v2": true,
     "history": {
+      "v2.4.1": "官方etherpad共享识别词因总是有人恶意修改导致识别异常，移除官方共享支持",
+      "v2.4": "支持 JSON 格式远程识别词集合订阅",
       "v2.3": "更换默认共享识别词地址"
     }
   },
   "NeoDBSync": {
+    "v3": false,
     "name": "NeoDB 想看",
     "description": "同步 NeoDB 想看条目，自动添加订阅。",
     "labels": "订阅",
@@ -782,8 +806,7 @@
       "v1.4": "支持仪表板组件显示",
       "v1.3": "修复观众做种数据异常问题",
       "v1.2": "修复契约检查无数据返回的问题"
-    },
-    "v2": true
+    }
   },
   "FeiShuMsg": {
     "name": "飞书机器人消息通知",
@@ -828,21 +851,29 @@
     "name": "gotify消息推送",
     "description": "支持使用gotify发送消息通知。",
     "labels": "消息通知",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "https://raw.githubusercontent.com/gotify/logo/refs/heads/master/gotify-logo.png",
     "author": "lethargicScribe",
     "level": 1,
-    "v2": true
+    "v2": true,
+    "release": true,
+    "history": {
+      "v1.2": "停止时封闭新消息并等待后台发送线程退出，超时保留线程以支持宿主重试"
+    }
   },
   "AppriseMsg": {
     "name": "Apprise 消息推送",
     "description": "Apprise - 适用于几乎所有平台的推送通知！",
     "labels": "消息通知",
-    "version": "1.0",
+    "version": "1.1",
     "icon": "Ntfy_A.png",
     "author": "lethargicScribe",
     "level": 1,
-    "v2": true
+    "v2": true,
+    "release": true,
+    "history": {
+      "v1.1": "停止时封闭新消息并等待后台发送线程退出，超时保留线程以支持宿主重试"
+    }
   },
   "TmdbWallpaper": {
     "name": "登录壁纸本地化",
@@ -863,12 +894,14 @@
     "name": "MoviePilot服务器监控",
     "description": "在仪表板中实时显示MoviePilot公共服务器状态。",
     "labels": "仪表板",
-    "version": "1.2",
+    "version": "1.4",
     "icon": "Duplicati_A.png",
     "author": "jxxghp",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.4": "重新设计仪表板，仅展示响应延迟、连接状态和速率等关键卡片",
+      "v1.3": "增加HTTP/DNS/TLS探测、请求速率、连接占比和异常兜底展示",
       "v1.2": "优化数量示",
       "v1.1": "增加详情界面显示"
     }
@@ -973,7 +1006,6 @@
     "icon": "Wecom_A.png",
     "author": "RamenRa",
     "level": 2,
-    "v2": true,
     "history": {
       "v1.7.3": "修复检测登录的元素",
       "v1.7.2": "||wan参数细分,修复使用||wan时立即检测一次实际不生效,修复v1第三方备用通知可能无效,调整验证码获取",
@@ -1004,15 +1036,17 @@
     }
   },
   "BangumiColl": {
+    "v3": false,
     "name": "Bangumi收藏订阅",
     "description": "Bangumi用户收藏添加到订阅",
     "labels": "订阅",
-    "version": "1.5.8",
+    "version": "1.5.9",
     "icon": "bangumi_b.png",
     "author": "Attente",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.5.9": "适配MoviePilot订阅统计同步入口变更",
       "v1.5.8": "修复版本判断逻辑",
       "v1.5.7": "适配MoviePilot v2.5.3",
       "v1.5.6": "修复远程命令名称, 完善远程命令回执",
@@ -1028,12 +1062,14 @@
     "name": "IYUU消息推送",
     "description": "支持使用IYUU发送消息通知。",
     "labels": "消息通知,IYUU",
-    "version": "1.3",
+    "version": "1.4",
     "icon": "Iyuu_A.png",
     "author": "jxxghp",
     "level": 1,
     "v2": true,
+    "release": true,
     "history": {
+      "v1.4": "停止时封闭新消息并等待后台发送线程退出，超时保留线程以支持宿主重试",
       "v1.3": "消息限流发送，以缓解IYUU服务器压力"
     }
   },
@@ -1056,5 +1092,58 @@
     "author": "cddjr",
     "level": 1,
     "v2": true
+  },
+  "AliDnsDDNS": {
+    "name": "阿里云 DDNS",
+    "description": "定时检测公网 IP，自动更新阿里云 DNS 解析记录，支持泛域名（* 记录）及 IPv6（AAAA）。",
+    "labels": "网络",
+    "version": "1.0",
+    "icon": "AliDnsDDNS.png",
+    "author": "dtzsghnr",
+    "level": 1,
+    "history": {
+      "v1.0": "初始版本，支持 IPv4/IPv6、泛域名、多记录配置、更新历史详情页"
+    }
+  },
+  "AIRecognizerEnhancer": {
+    "name": "AI识别增强",
+    "description": "直接复用 MoviePilot 当前 LLM 配置，在原生识别失败后做本地结构化识别兜底，并交回原生链路继续二次识别。",
+    "labels": "AI,识别,LLM,本地兜底,MoviePilot,TMDB",
+    "version": "0.1.14",
+    "icon": "airecognizerenhancer.png",
+    "author": "liuyuexi1987",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "0.1.14": "修复部分模型/网关返回 markdown 代码块包裹的 JSON 时结构化输出解析失败的问题，改为普通调用后剥围栏手工解析并保留重试。",
+      "0.1.13": "同步运行态能力，兼容 MoviePilot 最新 LLM 路径与异步 get_llm 接口，并修复失败样本持久化、清空和自动移除后的配置保存一致性。",
+      "0.1.10": "完善失败样本批量工作流，支持复查、批量建议、批量写入、低 token 摘要，并在模型异常时提供精确规则兜底。",
+      "0.1.4": "建立失败样本治理闭环，支持失败样本查看、摘要洞察、清理去重、保留上限，以及生成并写入 CustomIdentifiers。",
+      "0.1.0": "首个可用版本，复用 MoviePilot 当前 LLM 配置，在原生识别失败后通过 Chain NameRecognize 做本地结构化兜底。"
+    }
+  },
+  "AgentResourceOfficer": {
+    "name": "Agent影视助手",
+    "description": "龙虾agent稳定控制 MP：飞书入口、盘搜/影巢搜索、115/夸克转存、智能评分推荐。",
+    "labels": "Agent,影巢,HDHive,115,夸克,Quark,智能体,转存,解锁",
+    "version": "0.3.2",
+    "icon": "agentresourceofficer.png",
+    "author": "liuyuexi1987",
+    "level": 1,
+    "v2": true,
+    "release": true,
+    "history": {
+      "0.3.2": "修复 p115client 依赖版本号错误（0.0.8.5.1.1 不存在），固定为 PyPI 实际存在的 0.0.9.6.5.1，解决依赖安装失败问题。",
+      "0.3.1": "回退并固定 p115client 到 0.0.8.5.1.1，避免与 MoviePilot 当前环境和 115 插件依赖版本冲突。",
+      "0.3.0": "精简 Agent/MCP 暴露工具集，仅保留核心业务能力工具，移除自建计划、会话和自描述脚手架噪声；保留飞书与 HTTP 端点。",
+      "0.2.99": "重做 Vue 配置页与 115 扫码体验，修复扫码登录、配置保存、依赖误判、影巢网页登录 Cookie、自动刷新和 Playwright 兜底等问题。",
+      "0.2.74": "收口云盘搜索、转存、影巢签到和恢复链路，适配影巢 OpenAPI 新鉴权，补齐 115/夸克目录清理、Cookie 修复、远端接入和兼容检查。",
+      "0.2.67": "沉淀外部智能体执行契约和低 token 模板，统一 followup、error、score、command 摘要，并完善执行后追踪、恢复、维护与模板编排。",
+      "0.2.43": "形成 MP 原生 PT 主线与智能评分推荐，新增媒体识别、热门推荐、搜索详情、下载/订阅/控制计划、生命周期追踪、入库诊断、偏好画像和安全确认链路。",
+      "0.1.119": "完善请求模板协议、启动包、自检、维护和飞书入口迁移，并内置影巢签到日志与 Cookie 自动刷新，降低外部智能体接入成本。",
+      "0.1.79": "建立 assistant 协议层，新增 action、workflow、plans、history、readiness、recover、startup、toolbox、selfcheck 等能力，支持 compact 回执、会话恢复和安全 dry-run 计划执行。",
+      "0.1.34": "打通统一智能入口、原生 Agent Tool、会话状态/清理、115 扫码登录、待处理任务恢复与 115 独立直转执行层。",
+      "0.1.9": "首版接入夸克/115 转存、影巢搜索/解锁、盘搜/直链路由、候选分页详情、账号配额、签到兜底和健康检查。"
+    }
   }
 }
